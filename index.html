@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>文献翻译器</title>
+<meta name="theme-color" content="#1f4e79">
+<style>
+:root{--bg:#f4f6f9;--card:#fff;--fg:#1d2433;--mute:#6b7385;--pri:#1f4e79;--pri2:#2e6fb0;--line:#e2e6ee;--ok:#1b8a4a;--err:#c0392b}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#12161d;--card:#1b212b;--fg:#e6e9ef;--mute:#98a1b3;--pri:#5fa3e8;--pri2:#7db6ef;--line:#2c3442}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+header{background:var(--pri);color:#fff;padding:14px 16px}
+header h1{margin:0;font-size:19px}header p{margin:2px 0 0;font-size:13px;opacity:.85}
+main{max-width:900px;margin:0 auto;padding:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px}
+.card h2{margin:0 0 10px;font-size:16px}
+.drop{border:2px dashed var(--line);border-radius:10px;padding:26px 12px;text-align:center;cursor:pointer;color:var(--mute)}
+.drop.on{border-color:var(--pri2);color:var(--pri2)}
+.drop b{color:var(--fg)}
+label{display:block;font-size:13px;color:var(--mute);margin:8px 0 3px}
+input,select,textarea{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);font:inherit}
+textarea{min-height:70px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:560px){.row{grid-template-columns:1fr}}
+.btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+button{border:0;border-radius:8px;padding:10px 16px;font:inherit;font-weight:600;cursor:pointer;background:var(--pri);color:#fff}
+button.sec{background:transparent;color:var(--pri);border:1px solid var(--pri)}
+button:disabled{opacity:.45;cursor:not-allowed}
+.bar{height:10px;background:var(--line);border-radius:5px;overflow:hidden;margin:10px 0 4px}
+.bar i{display:block;height:100%;width:0;background:var(--ok);transition:width .3s}
+.hint{font-size:13px;color:var(--mute)}
+.err{color:var(--err)}
+.chk{display:flex;align-items:center;gap:6px;font-size:14px;color:var(--fg);margin:6px 0}
+.chk input{width:auto}
+#preview{max-height:60vh;overflow:auto;border-top:1px solid var(--line);margin-top:10px;padding-top:6px}
+#preview .p{margin:0 0 12px}
+#preview .o{color:var(--mute);font-size:13px;margin-bottom:2px}
+#preview .pg{font-size:12px;color:var(--pri2);border-bottom:1px solid var(--line);margin:14px 0 8px}
+details summary{cursor:pointer;color:var(--pri2);font-size:14px}
+</style>
+</head>
+<body>
+<header><h1>📚 外文文献翻译器</h1><p>PDF → 中文 · 论文 / SCI / 书籍 · 导出 Word 或 PDF · 文件只在你的设备上处理</p></header>
+<main>
+<div class="card">
+  <h2>① 选择 PDF</h2>
+  <div class="drop" id="drop">点击选择或拖入 PDF 文件<br><span id="fname"></span></div>
+  <input type="file" id="file" accept="application/pdf" hidden>
+  <div class="row">
+    <div><label>起始页</label><input type="number" id="p1" min="1" value="1"></div>
+    <div><label>结束页（留空=最后一页）</label><input type="number" id="p2" min="1"></div>
+  </div>
+  <label class="chk"><input type="checkbox" id="skipRef" checked>遇到 References / 参考文献 后停止（不翻译参考文献）</label>
+</div>
+
+<div class="card">
+  <h2>② 翻译引擎</h2>
+  <select id="engine">
+    <option value="ms">微软翻译（免费，国内可直接用，推荐）</option>
+    <option value="google">谷歌翻译（免费，需能访问谷歌）</option>
+    <option value="llm">AI 大模型（DeepSeek / 通义 / 中转站，学术质量最好，需 API Key）</option>
+  </select>
+  <div id="llmBox" style="display:none">
+    <div class="row">
+      <div><label>API 地址（OpenAI 兼容）</label><input id="base" placeholder="https://api.deepseek.com/v1"></div>
+      <div><label>模型名</label><input id="model" placeholder="deepseek-chat"></div>
+    </div>
+    <label>API Key（只保存在本机浏览器）</label><input id="key" type="password" placeholder="sk-...">
+    <label>专业术语表（可选，每行一个：英文=中文）</label>
+    <textarea id="gloss" placeholder="defender=防守者&#10;first-step response=首步响应"></textarea>
+  </div>
+</div>
+
+<div class="card">
+  <h2>③ 翻译</h2>
+  <div class="btns">
+    <button id="go" disabled>开始翻译</button>
+    <button id="stop" class="sec" disabled>暂停</button>
+  </div>
+  <div class="bar"><i id="barI"></i></div>
+  <div class="hint" id="status">请先选择 PDF</div>
+</div>
+
+<div class="card">
+  <h2>④ 导出</h2>
+  <label class="chk"><input type="checkbox" id="bi">中英对照（原文 + 译文）</label>
+  <div class="btns">
+    <button id="dlDoc" disabled>下载 Word</button>
+    <button id="dlPdf" disabled>导出 PDF</button>
+    <button id="dlTxt" class="sec" disabled>下载 TXT</button>
+  </div>
+  <p class="hint">导出 PDF 会打开打印页：电脑选“另存为 PDF”，手机选“打印 → 存储为 PDF / 分享”。翻译到一半也可以先导出已完成部分。</p>
+  <details><summary>预览</summary><div id="preview"></div></details>
+</div>
+<p class="hint">提示：扫描版（图片型）PDF 没有文字层，需要先做 OCR。公式、表格、图片不保留，只翻译正文文字。</p>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+const $=id=>document.getElementById(id);
+const LS={get(k){try{return localStorage.getItem(k)||''}catch(e){return''}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+['base','model','key','gloss','engine'].forEach(k=>{const v=LS.get('tr_'+k);if(v)$(k).value=v;$(k).addEventListener('change',()=>LS.set('tr_'+k,$(k).value))});
+const showLlm=()=>$('llmBox').style.display=$('engine').value==='llm'?'':'none';$('engine').onchange=e=>{LS.set('tr_engine',$('engine').value);showLlm()};showLlm();
+
+let pdf=null,fileName='译文',paras=[],running=false;
+const status=(t,err)=>{$('status').textContent=t;$('status').className='hint'+(err?' err':'')};
+
+// ---------- 选择文件 ----------
+$('drop').onclick=()=>$('file').click();
+$('drop').ondragover=e=>{e.preventDefault();$('drop').classList.add('on')};
+$('drop').ondragleave=()=>$('drop').classList.remove('on');
+$('drop').ondrop=e=>{e.preventDefault();$('drop').classList.remove('on');if(e.dataTransfer.files[0])load(e.dataTransfer.files[0])};
+$('file').onchange=e=>e.target.files[0]&&load(e.target.files[0]);
+async function load(f){
+  try{
+    status('正在读取 PDF…');
+    pdf=await pdfjsLib.getDocument({data:await f.arrayBuffer()}).promise;
+    fileName=f.name.replace(/\.pdf$/i,'');
+    $('fname').innerHTML='<b>'+f.name.replace(/</g,'&lt;')+'</b>（共 '+pdf.numPages+' 页）';
+    $('p2').placeholder=pdf.numPages;paras=[];renderPreview();setExport();
+    $('go').disabled=false;status('已载入，点击“开始翻译”');
+  }catch(e){status('PDF 读取失败：'+e.message,true)}
+}
+
+// ---------- 提取段落 ----------
+async function extract(from,to){
+  const out=[];let stop=false;
+  for(let n=from;n<=to&&!stop;n++){
+    status('正在提取文字 第 '+n+'/'+to+' 页');
+    const page=await pdf.getPage(n);const tc=await page.getTextContent();
+    const lines=[];let cur=null;
+    for(const it of tc.items){
+      if(it.str===undefined)continue;
+      const y=it.transform[5],x=it.transform[4],h=Math.abs(it.transform[3])||it.height||10;
+      if(cur&&Math.abs(y-cur.y)<h*0.6&&x>=cur.xe-h*2){
+        if(it.str&&!/\s$/.test(cur.t)&&!/^\s/.test(it.str)&&x-cur.xe>h*0.15)cur.t+=' ';
+        cur.t+=it.str;cur.xe=x+it.width;
+      }else{
+        if(cur&&cur.t.trim())lines.push(cur);
+        cur={t:it.str,y,x,xe:x+it.width,h};
+      }
+      if(it.hasEOL&&cur){if(cur.t.trim())lines.push(cur);cur=null}
+    }
+    if(cur&&cur.t.trim())lines.push(cur);
+    const gaps=[];for(let i=1;i<lines.length;i++){const g=lines[i-1].y-lines[i].y;if(g>0)gaps.push(g)}
+    gaps.sort((a,b)=>a-b);const med=gaps[Math.floor(gaps.length/2)]||12;
+    const maxW=Math.max(...lines.map(l=>l.xe-l.x),1);
+    let p=null;
+    const flush=()=>{if(p&&p.t.trim()){out.push({page:n,src:p.t.replace(/\s+/g,' ').trim(),zh:''})}p=null};
+    for(let i=0;i<lines.length;i++){
+      const l=lines[i],t=l.t.trim();
+      if(/^\d{1,4}$/.test(t))continue;// 页码
+      if($('skipRef').checked&&/^(\d+\.?\s*)?(references|bibliography|参考文献|literature cited)$/i.test(t)){flush();stop=true;break}
+      const prev=lines[i-1];
+      let brk=!p;
+      if(p&&prev){
+        const g=prev.y-l.y;
+        if(g<0||g>med*1.45)brk=true;
+        else if(Math.abs(l.h-prev.h)>prev.h*0.25)brk=true;
+        else if(/[.:!?。]$/.test(prev.t.trim())&&(prev.xe-prev.x)<maxW*0.75)brk=true;
+      }
+      if(brk){flush();p={t:t}}
+      else if(/[a-z]-$/.test(p.t)&&/^[a-z]/.test(t))p.t=p.t.slice(0,-1)+t;
+      else p.t+=' '+t;
+    }
+    flush();
+  }
+  return out.filter(x=>/[A-Za-zÀ-ɏЀ-ӿ぀-ヿ]{2}/.test(x.src));
+}
+
+// ---------- 翻译引擎 ----------
+let msTok=null,msTime=0;
+async function msToken(){if(!msTok||Date.now()-msTime>8*60e3){const r=await fetch('https://edge.microsoft.com/translate/auth');if(!r.ok)throw Error('微软授权失败 '+r.status);msTok=await r.text();msTime=Date.now()}return msTok}
+async function trMS(arr){
+  const r=await fetch('https://api-edge.cognitive.microsofttranslator.com/translate?to=zh-Hans&api-version=3.0',{method:'POST',headers:{'Authorization':'Bearer '+await msToken(),'Content-Type':'application/json'},body:JSON.stringify(arr.map(t=>({Text:t})))});
+  if(r.status===401){msTok=null;throw Error('token过期')}
+  if(!r.ok)throw Error('微软翻译 '+r.status);
+  return (await r.json()).map(x=>x.translations[0].text);
+}
+async function trGoogle1(t){
+  const r=await fetch('https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'q='+encodeURIComponent(t)});
+  if(!r.ok)throw Error('谷歌翻译 '+r.status);
+  const j=await r.json();return j[0].map(s=>s[0]).join('');
+}
+async function trGoogle(arr){
+  const res=(await trGoogle1(arr.join('\n'))).split('\n').map(s=>s.trim()).filter(Boolean);
+  if(res.length===arr.length)return res;
+  const o=[];for(const t of arr)o.push(await trGoogle1(t));return o;
+}
+async function trLLM(arr){
+  const base=($('base').value.trim()||'https://api.deepseek.com/v1').replace(/\/+$/,'').replace(/\/chat\/completions$/,'');
+  const key=$('key').value.trim();if(!key)throw Error('请填写 API Key');
+  const gloss=$('gloss').value.trim();
+  const sys='你是资深学术翻译，把用户给出的外文学术文本（论文、学位论文、专著）译成准确、通顺、符合中文学术规范的简体中文。保留专有名词、缩写、公式符号、引用标注（如 [12]、(Smith, 2020)）。每段以 ⟦序号⟧ 开头，输出时保持相同序号、相同段数，每段一行，只输出译文。'+(gloss?'\n必须遵守的术语表：\n'+gloss:'');
+  const user=arr.map((t,i)=>'⟦'+(i+1)+'⟧ '+t).join('\n\n');
+  const r=await fetch(base+'/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},body:JSON.stringify({model:$('model').value.trim()||'deepseek-chat',temperature:0.2,messages:[{role:'system',content:sys},{role:'user',content:user}]})});
+  if(!r.ok)throw Error('大模型接口 '+r.status+' '+(await r.text()).slice(0,150));
+  const txt=(await r.json()).choices[0].message.content;
+  const out=arr.map(()=>'');const re=/⟦(\d+)⟧\s*([\s\S]*?)(?=⟦\d+⟧|$)/g;let m;
+  while((m=re.exec(txt)))if(+m[1]>=1&&+m[1]<=arr.length)out[m[1]-1]=m[2].trim();
+  if(out.some(x=>!x)){if(arr.length===1)return[txt.replace(/⟦\d+⟧/g,'').trim()];const o=[];for(const t of arr)o.push((await trLLM([t]))[0]);return o}
+  return out;
+}
+
+// ---------- 主流程 ----------
+function batches(todo,limit){const b=[];let cur=[],len=0;for(const p of todo){if(cur.length&&(len+p.src.length>limit||cur.length>=40)){b.push(cur);cur=[];len=0}cur.push(p);len+=p.src.length}if(cur.length)b.push(cur);return b}
+$('go').onclick=async()=>{
+  if(!pdf)return;
+  const from=Math.max(1,+$('p1').value||1),to=Math.min(pdf.numPages,+$('p2').value||pdf.numPages);
+  const key=fileName+'|'+from+'|'+to;
+  running=true;$('go').disabled=true;$('stop').disabled=false;
+  try{
+    if(!paras.length||paras.key!==key){paras=await extract(from,to);paras.key=key}
+    if(!paras.length){status('没有提取到文字：可能是扫描版 PDF，需要先 OCR',true);return}
+    const eng=$('engine').value,fn={ms:trMS,google:trGoogle,llm:trLLM}[eng];
+    const bs=batches(paras.filter(p=>!p.zh),eng==='llm'?2500:eng==='google'?1500:4000);
+    const total=paras.length;let fail=0;
+    const conc=eng==='llm'?3:2;let idx=0;
+    const worker=async()=>{while(running&&idx<bs.length){const b=bs[idx++];
+      for(let tries=0;tries<3;tries++){try{const r=await fn(b.map(p=>p.src));b.forEach((p,i)=>p.zh=r[i]||'');break}
+      catch(e){if(tries===2){fail++;status('部分失败：'+e.message,true)}else await new Promise(s=>setTimeout(s,1500*(tries+1)))}}
+      const done=paras.filter(p=>p.zh).length;$('barI').style.width=(done/total*100)+'%';
+      if(running)status('翻译中 '+done+'/'+total+' 段');renderPreview();setExport();}};
+    await Promise.all(Array.from({length:conc},worker));
+    const done=paras.filter(p=>p.zh).length;
+    if(done===total)status('✅ 全部完成，共 '+total+' 段，可以导出了');
+    else status((running?'有 '+(total-done)+' 段失败，':'已暂停，')+'再点“开始翻译”会继续剩下的部分',!running?false:true);
+  }catch(e){status('出错：'+e.message,true)}
+  finally{running=false;$('go').disabled=false;$('go').textContent='继续翻译';$('stop').disabled=true}
+};
+$('stop').onclick=()=>{running=false;status('正在暂停…')};
+
+// ---------- 预览 & 导出 ----------
+const esc=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;');
+function renderPreview(){let h='',pg=0;for(const p of paras){if(p.page!==pg){pg=p.page;h+='<div class="pg">第 '+pg+' 页</div>'}h+='<div class="p">'+($('bi').checked?'<div class="o">'+esc(p.src)+'</div>':'')+'<div>'+esc(p.zh||'（未翻译）')+'</div></div>'}$('preview').innerHTML=h}
+$('bi').onchange=renderPreview;
+function setExport(){const ok=paras.some(p=>p.zh);['dlDoc','dlPdf','dlTxt'].forEach(i=>$(i).disabled=!ok)}
+function save(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},2000)}
+$('dlTxt').onclick=()=>save(new Blob([paras.map(p=>($('bi').checked?p.src+'\n':'')+(p.zh||'')).join('\n\n')],{type:'text/plain;charset=utf-8'}),fileName+'_中文.txt');
+$('dlDoc').onclick=async()=>{
+  const D=docx,bi=$('bi').checked,ch=[];
+  ch.push(new D.Paragraph({heading:D.HeadingLevel.TITLE,alignment:D.AlignmentType.CENTER,children:[new D.TextRun({text:fileName+'（中文译文）',font:{eastAsia:'宋体'}})]}));
+  for(const p of paras){
+    if(bi)ch.push(new D.Paragraph({spacing:{after:60},children:[new D.TextRun({text:p.src,size:20,color:'777777',font:'Times New Roman'})]}));
+    ch.push(new D.Paragraph({spacing:{after:200,line:360},indent:{firstLine:480},children:[new D.TextRun({text:p.zh||'（未翻译）',size:24,font:{ascii:'Times New Roman',eastAsia:'宋体'}})]}));
+  }
+  const doc=new D.Document({sections:[{children:ch}]});
+  save(await D.Packer.toBlob(doc),fileName+'_中文.docx');
+};
+$('dlPdf').onclick=()=>{
+  const bi=$('bi').checked;
+  const body=paras.map(p=>(bi?'<p class="o">'+esc(p.src)+'</p>':'')+'<p>'+esc(p.zh||'（未翻译）')+'</p>').join('');
+  const w=window.open('','_blank');
+  if(!w){alert('浏览器拦截了弹窗，请允许弹出窗口后重试');return}
+  w.document.write('<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+esc(fileName)+'_中文</title><style>body{font:12pt/1.8 "Songti SC","SimSun","宋体",serif;max-width:720px;margin:24px auto;padding:0 16px;color:#000;background:#fff}h1{text-align:center;font-size:18pt}p{text-indent:2em;margin:0 0 .6em}p.o{text-indent:0;color:#666;font:10pt/1.5 "Times New Roman",serif}@page{margin:2cm}.tip{background:#fffbe6;padding:8px;font:14px sans-serif;text-indent:0}@media print{.tip{display:none}}</style></head><body><p class="tip">如果没有自动弹出打印窗口：电脑按 Ctrl+P，选择“另存为 PDF”；手机用浏览器菜单里的“打印/分享 → 存储为 PDF”。</p><h1>'+esc(fileName)+'（中文译文）</h1>'+body+'<script>setTimeout(()=>print(),600)<\/script></body></html>');
+  w.document.close();
+};
+</script>
+</body>
+</html>
