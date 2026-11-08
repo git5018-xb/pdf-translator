@@ -57,10 +57,10 @@ details summary{cursor:pointer;color:var(--pri2);font-size:14px}
 <div class="card">
   <h2>② 翻译引擎</h2>
   <select id="engine">
-    <option value="ms">微软翻译（免费，国内可直接用，推荐）</option>
-    <option value="google">谷歌翻译（免费，需能访问谷歌）</option>
-    <option value="llm">AI 大模型（DeepSeek / 通义 / 中转站，学术质量最好，需 API Key）</option>
+    <option value="google">谷歌翻译（免费，需要开梯子/能访问谷歌）</option>
+    <option value="llm">AI 大模型（DeepSeek 等，国内直连，学术质量最好，需 API Key）</option>
   </select>
+  <p class="hint">没有梯子就选 AI 大模型：去 platform.deepseek.com 注册充值几块钱，创建 API Key 填进来即可，一篇博士论文通常只需几毛到几块钱。</p>
   <div id="llmBox" style="display:none">
     <div class="row">
       <div><label>API 地址（OpenAI 兼容）</label><input id="base" placeholder="https://api.deepseek.com/v1"></div>
@@ -215,7 +215,7 @@ $('go').onclick=async()=>{
   try{
     if(!paras.length||paras.key!==key){paras=await extract(from,to);paras.key=key}
     if(!paras.length){status('没有提取到文字：可能是扫描版 PDF，需要先 OCR',true);return}
-    const eng=$('engine').value,fn={ms:trMS,google:trGoogle,llm:trLLM}[eng];
+    const eng=$('engine').value,fn={google:trGoogle,llm:trLLM}[eng]||trGoogle;
     const bs=batches(paras.filter(p=>!p.zh),eng==='llm'?2500:eng==='google'?1500:4000);
     const total=paras.length;let fail=0;
     const conc=eng==='llm'?3:2;let idx=0;
