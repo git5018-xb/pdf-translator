@@ -216,8 +216,9 @@ async function trMS(arr){
   if(!r.ok)throw Error('微软翻译 '+r.status);
   return (await r.json()).map(x=>x.translations[0].text);
 }
+function tfetch(u,o={},ms=45000){const c=new AbortController();const t=setTimeout(()=>c.abort(),ms);return fetch(u,{...o,signal:c.signal}).finally(()=>clearTimeout(t))}
 async function trGoogle1(t){
-  const r=await fetch('https://translate.googleapis.com/translate_a/single?client=gtx&sl='+$('sl').value+'&tl='+$('tl').value+'&dt=t',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'q='+encodeURIComponent(t)});
+  const r=await tfetch('https://translate.googleapis.com/translate_a/single?client=gtx&sl='+$('sl').value+'&tl='+$('tl').value+'&dt=t',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'q='+encodeURIComponent(t)});
   if(!r.ok)throw Error('谷歌翻译 '+r.status);
   const j=await r.json();return j[0].map(s=>s[0]).join('');
 }
@@ -235,7 +236,7 @@ async function trLLM(arr,ctx){
   const sl=$('sl').value,tlN=LN[$('tl').value],slN=sl==='auto'?'原文（自动识别语种，可能混有多种语言）':LN[sl],field=$('field').value.trim();
   const sys='你是精通世界各国语言的资深学术翻译专家'+(field?'，专长领域：'+field:'')+'。把'+slN+'的学术文本（论文、学位论文、专著、SCI 文献）译成'+tlN+'。要求：1) 准确传达原意，不漏译、不增译、不总结；2) 使用目标语言该学科的规范术语和学术文体，通顺自然，没有翻译腔；3) 人名、机构名、专有名词可保留原文括注；4) 缩写、公式、符号、数字、单位、引用标注（如 [12]、(Smith, 2020)）原样保留；5) 文本从 PDF 提取，可能有断行、连字符、页眉噪音，按语义理顺后再译。格式：每段以 ⟦序号⟧ 开头，输出保持相同序号和段数，只输出译文，不加解释。'+(gloss?'\n必须遵守的术语表：\n'+gloss:'');
   const user=(ctx?'【上文，仅供理解语境，不要翻译】\n'+ctx.slice(-600)+'\n\n【待翻译】\n':'')+arr.map((t,i)=>'⟦'+(i+1)+'⟧ '+t).join('\n\n');
-  const r=await fetch(base+'/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},body:JSON.stringify({model:$('model').value.trim()||'deepseek-chat',temperature:0.2,max_tokens:8000,messages:[{role:'system',content:sys},{role:'user',content:user}]})});
+  const r=await tfetch(base+'/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},body:JSON.stringify({model:$('model').value.trim()||'deepseek-chat',temperature:0.2,max_tokens:8000,messages:[{role:'system',content:sys},{role:'user',content:user}]})},180000);
   if(!r.ok)throw Error('大模型接口 '+r.status+' '+(await r.text()).slice(0,150));
   const txt=(await r.json()).choices[0].message.content;
   const out=arr.map(()=>'');const re=/⟦(\d+)⟧\s*([\s\S]*?)(?=⟦\d+⟧|$)/g;let m;
@@ -259,8 +260,8 @@ $('go').onclick=async()=>{
     const total=paras.length;let fail=0;
     const conc=+$('conc').value||3;let idx=0;
     const worker=async()=>{while(running&&idx<bs.length){const b=bs[idx++];
-      for(let tries=0;tries<3;tries++){try{const k=paras.indexOf(b[0]);const r=await fn(b.map(p=>p.src),k>0?paras[k-1].src:'');b.forEach((p,i)=>p.zh=r[i]||'');break}
-      catch(e){if(tries===2){fail++;status('部分失败：'+e.message,true)}else await new Promise(s=>setTimeout(s,1500*(tries+1)))}}
+      for(let tries=0;tries<5;tries++){try{const k=paras.indexOf(b[0]);const r=await fn(b.map(p=>p.src),k>0?paras[k-1].src:'');b.forEach((p,i)=>p.zh=r[i]||'');break}
+      catch(e){if(tries===4){fail++;status('部分失败：'+e.message,true)}else await new Promise(s=>setTimeout(s,2000*(tries+1)))}}
       const done=paras.filter(p=>p.zh).length;$('barI').style.width=(done/total*100)+'%';
       if(running)status('翻译中 '+done+'/'+total+' 段');renderPreview();setExport();saveJob();}};
     await Promise.all(Array.from({length:conc},worker));
